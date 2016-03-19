@@ -1,0 +1,722 @@
+<!doctype html>
+
+<meta charset="utf-8">
+<title>lattice caliculation</title>
+
+<script src="jquery-2.2.1.js"></script>
+<script src="d3.js" charset="utf-8"></script>
+<script src="dagre-d3.js"></script>
+
+<h1>Dagre D3 Demo: lattice caliculation</h1>
+
+<style id="css">
+  /* This sets the color for "TK" nodes to a light blue green. */
+
+  div,text {
+    font-weight: 300;
+    font-family: "Helvetica Neue", Helvetica, Arial, sans-serf;
+    font-size: 14px;
+  }
+
+  g.node rect {
+    stroke: #999;
+    fill: #fff;
+    stroke-width: 1.5px;
+  }
+
+  g.edgePath path {
+    stroke: #333;
+    stroke-width: 1.5px;
+  }
+
+  g.variable rect {
+    stroke: #999;
+    fill: #fff;
+    stroke-width: 1.5px;
+  }
+
+  g.method rect {
+    stroke: #999;
+    fill: #fff;
+    stroke-width: 1.5px;
+  }
+
+  g.vtrue rect,
+  g.vtrue path {
+    stroke: #46F;
+  }
+
+  g.vfalse rect,
+  g.vfalse path {
+    stroke: #F46;
+  }
+
+  g.focused rect {
+    stroke-width: 4px;
+  }
+
+  g.temp rect {
+    stroke: #333;
+    fill: #999;
+  }
+
+  div.inner {
+    background-color: #99F;
+  }
+
+  div.inner:hover {
+    background-color: #9F9;
+  }
+</style>
+
+<div class="inner">tete</div>
+<svg id="svg-canvas" width=960 height=600></svg>
+
+<section>
+  <p>An example of visualizing the tokenization of a sentence. This example shows how CSS classes can be applied to a rendered graph.
+</section>
+
+<script id="js">
+  var model_data = {
+    "n1": {
+      id: "n1",
+      label: "変数",
+      class: "variable",
+      description: "なんやかんや",
+      to: ["n2"]
+    },
+    "n2": {
+      id: "n2",
+      label: "条件分解",
+      method: "or",
+      class: "method",
+      description: "なんとかかんとか分解法",
+      to: ["n11", "n13"]
+    },
+    "n11": {
+      id: "n11",
+      label: "変数の分解パターン1",
+      class: "variable",
+      description: "ここは変数の説明",
+      to: ["n4"]
+    },
+    "n4": {
+      id: "n4",
+      label: "恒真",
+      method: "T",
+      class: "method",
+      description: "なぜTになるか説明"
+    },
+    "n13": {
+      id: "n13",
+      label: "変数の分解パターン2",
+      class: "variable",
+      description: "ここは変数の説明",
+      to: ["n6"]
+    },
+    "n6": {
+      id: "n6",
+      label: "恒偽",
+      method: "F",
+      class: "method",
+      description: "なぜFになるか説明"
+    },
+    "n101": {
+      id: "n101",
+      label: "変数2",
+      class: "variable",
+      description: "なんやかんや",
+      to: ["n8"]
+    },
+    "n8": {
+      id: "n8",
+      label: "and",
+      method: "and",
+      class: "method",
+      description: "なんとかかんとか分解法",
+      to: ["n13", "n103"]
+    },
+    "n103": {
+      id: "n103",
+      label: "新",
+      class: "variable",
+      description: "なんやかんや",
+      to: ["n10"]
+    },
+    "n10": {
+      id: "n10",
+      label: "T",
+      method: "T",
+      class: "method",
+      description: "なぜTになるか説明"
+    }
+  }
+
+  // method ノードのクラス定義
+  var methods_data = {
+      "T": {
+        method: "T",
+        label: "恒真",
+        class: "method temp",
+        description: "trueで確定",
+        formula: "return true",
+      },
+      "F": {
+        method: "F",
+        label: "恒偽",
+        class: "method temp",
+        description: "falseで確定",
+        formula: "return false"
+      },
+      "or": {
+        method: "or",
+        label: "列挙",
+        class: "method temp",
+        description: "XXに従って要件を列挙",
+        formula: "return args.some(function(arg){return arg==true})",
+        args: "return ['パターン1','パターン2','パターン3']",
+      },
+      "and": {
+        method: "and",
+        label: "分解",
+        class: "method temp",
+        description: "XXに従って要件を分解",
+        formula: "return !args.some(function(arg){return arg==false})",
+        args: "return ['パターン1','パターン2','パターン3']",
+      },
+      "not": {
+        method: "not",
+        label: "攻守交代",
+        class: "method temp",
+        description: "攻守の入れ替え",
+        formula: "return !args[0]",
+        args: "return [args.label]",
+      },
+      "incl": {
+        method: "incl",
+        label: "包含",
+        class: "method temp",
+        description: "別の要件で言うと？",
+        formula: "return args[0]",
+        args: "return [args.label]",
+      },
+    }
+    // Create the input graph
+  var g = new dagreD3.graphlib.Graph()
+    .setGraph({})
+    .setDefaultEdgeLabel(function() {
+      return {};
+    });
+
+  g.graph().rankdir = "LR";
+  g.graph().transition = function(selection) {
+    return selection.transition().duration(500);
+  };
+
+
+  // Set up an SVG group so that we can translate the final graph.
+  var svg = d3.select("svg"),
+    svgGroup = svg.append("g");
+  // Create the renderer
+  var render = new dagreD3.render();
+  // Add our custom arrow (a hollow-point)
+  render.arrows().hollowPoint = function normal(parent, id, edge, type) {
+    var marker = parent.append("marker")
+      .attr("id", id)
+      .attr("viewBox", "0 0 10 10")
+      .attr("refX", 9)
+      .attr("refY", 5)
+      .attr("markerUnits", "strokeWidth")
+      .attr("markerWidth", 8)
+      .attr("markerHeight", 6)
+      .attr("orient", "auto")
+      /*
+          var path = marker.append("path")
+            .attr("d", "M 0 0 L 10 5 L 0 10 z")
+            .style("stroke-width", 1)
+            .style("stroke-dasharray", "1,0")
+            .style("fill", "#fff")
+            .style("stroke", "#333")
+            */
+      // Todo:まーかーをDragしたい。。
+    var sel = marker.append("rect").attr("width", 10).attr("height", 10).style("fill", "#fff").style("stroke", "#333").on("click", function(d, i) {
+      if (d3.event.defaultPrevented) return;
+      d.style("fill", "#666")
+    })
+
+    dagreD3.util.applyStyle(sel, edge[type + "Style"]);
+  };
+
+  // Set up zoom support
+  var zoom = d3.behavior.zoom().on("zoom", function() {
+    svgGroup.attr("transform", "translate(" + d3.event.translate + ")" +
+      "scale(" + d3.event.scale + ")");
+  });
+  svg.call(zoom);
+
+  // Set up drag support
+  var nodeDrag = d3.behavior.drag()
+    .on("dragstart", dragstart)
+    .on("drag", dragmove);
+
+  function clicked(d, i) {
+    if (d3.event.defaultPrevented) return; // dragged
+    console.time("select" + d)
+    focusIn(d)
+    console.timeEnd("select" + d)
+  }
+
+  function editClassStrings(str, classobj) {
+    var cla = str.split(" ")
+    for (var k in classobj) {
+      if (classobj[k]) {
+        if (!cla.some(function(c) {
+            return c == k
+          })) {
+          cla.push(k)
+        }
+      } else {
+        cla = cla.filter(function(c) {
+          return c != k
+        })
+      }
+    }
+    return cla.join(" ")
+  }
+  // 要素の追加と削除
+  var mcount = 0
+
+  function hideinner(id) {
+    $("#"+id+" div.inner").hide()
+  }
+  function showinner(id) {
+    $("#"+id+" div.inner").show()
+  }
+
+  function addNode(n) {
+    g.setNode(n.id, n)
+    var node = g.node(n.id)
+    node.labelType = "html"
+    var text = n.label
+    node.label = "<div class='inner' style='display: none;'>" + text + "</div>"
+    node.label += "<input type='text' value='" + text + "' />"
+    node.label += "<input type='button' value='OK' onclick='showinner(\'"+n.id+"\')' />"
+
+
+    function addEdge(f, t) {
+      g.setEdge(f, t, {
+        arrowhead: "hollowPoint",
+        id: f + "-" + t
+      })
+      var ed = g.edge(f, t)
+      ed.lineInterpolate = 'basis'
+      ed.classed = function(classobj) {
+        ed.class = editClassStrings(ed.class, classobj)
+        g.setEdge(f, t, ed)
+        svgGroup.select("#" + ed.id).classed(classobj)
+      }
+    }
+    // g.nodeオブジェクトのfrom/toデータ整備。。。なんでnodeじゃなくてn(model_dataの方)を
+    if (n.from) {
+      n.from.forEach(function(f) {
+        addEdge(f, n.id)
+          // 親に自分を登録
+        var nd = g.node(f) //| data[f]// これは上手くいかない
+          // g.nodeに無いときはdataを参照
+        if (!nd) {
+          nd = model_data[f]
+        }
+        if (!nd.to) {
+          nd.to = [n.id]
+        } else if (!nd.to.some(function(_) {
+            return _ == n.id
+          })) {
+          nd.to.push(n.id)
+        }
+      })
+    }
+    if (n.to) {
+      n.to.forEach(function(t) {
+        addEdge(n.id, t)
+        var nd = g.node(t) //| data[t]
+        if (!nd) {
+          nd = model_data[t]
+        }
+        if (!nd.from) {
+          nd.from = [n.id]
+        } else if (!nd.from.some(function(_) {
+            return _ == n.id
+          })) {
+          nd.from.push(n.id)
+        }
+      })
+    }
+    node.classed = function(classobj) {
+      node.class = editClassStrings(node.class, classobj)
+      g.setNode(node.id, node)
+      svgGroup.select("#" + node.id).classed(classobj)
+    }
+    node.isClass = function(classtr) {
+        return 0 <= node.class.indexOf(classtr)
+      }
+      // 値の計算周りの関数セットアップ
+    node.class.split(" ").forEach( //こっちはnodeの方見てるし。。。
+      function(c) {
+        switch (c) {
+          case "variable":
+            node._func = function(args) {
+              if (!node.to) {
+                return undefined
+              }
+              for (var t = 0; t < node.to.length; t++) {
+                var gt = g.node(node.to[t])
+                if (gt && !gt.isClass("temp")) {
+                  return gt._value
+                }
+            }
+              return undefined
+            }
+
+            node.showMethods = function() {
+                addMethods(node.id)
+              } // todo:適切なmethodの追加
+            break
+          case "method":
+            node.rx = node.ry = 15
+            node._func = new Function("args", methods_data[node.method].formula)
+            node.showMethods = function() {
+                addArgNodes(node.id, g.node(node.from[0]))
+              } // Todo 親の指定方法。。
+            break
+          default:
+
+        }
+      }
+    )
+
+    // 子要素が変更された時に呼ばれる
+    node.updateValue = function() {
+      var clobj = {}
+      clobj["v" + node._value] = false
+        //dagreD3NodeClass(node.id,clobj)// 昔の値は消しておく
+      var args = []
+      if (node.to) {
+        node.to.forEach(function(t) {
+          var tnode = g.node(t)
+          if (!tnode) {
+            args.push(undefined)
+          } else if (!tnode.isClass("temp")) {
+            args.push(g.node(t)._value)
+          }
+        })
+      }
+      node._value = node._func(args)
+      clobj["v" + node._value] = true
+        //dagreD3NodeClass(node.id,clobj)
+      node.classed(clobj)
+        // 親のチェーンを駆け上る
+      if (node.from) {
+        node.from.forEach(function(f) {
+          //g.edge(f,node.id).classed(clobj) //edgeにclassが無い・・
+          g.node(f).updateValue()
+        })
+      }
+    }
+    node.updateValue() //早速実行してムル
+
+    // 諸々関数
+    node.getSibling = function(count, followAncestor) {
+      if (!node.from || node.from.length < 1) {
+        return node.id　 // 親がいなかったら自分。本当は別のルートを返したいが。。
+      }
+      if (!followAncestor) {
+        var par = g.node(node.from[0]).to
+        var pos = par.indexOf(node.id)
+        return par[(pos + count + par.length) % par.length]
+      }
+      // 複数親でfollowAncestorは上手く動かない。後で考える
+      var ppos = 0;
+      for (var i = 0; i < node.from.length; i++) {
+        var par = g.node(node.from[ppos])
+        var pos = par.to.indexOf(node.id) + count
+        if (0 <= pos && pos < par.to.length) {
+          return par.to[(pos + par.to.length) % par.to.length]
+        } else {
+          var ant = g.node(par.getSibling(count, followAncestor)).to
+          if (ant) { // 可能なら元いた階層に合わせる
+            return ant[count < 0 ? (ant.length - 1) : 0] // 0 決め打ちっすか！？
+          }
+        }
+        ppos = (ppos + count + node.from.length) % node.from.length
+      }
+      return node.id // 見つからなかったら自分
+    }
+
+    mcount++
+  }
+
+
+  function addNodes(data) {
+    for (var d in data) {
+      addNode(data[d])
+    }
+    g.node("n10").updateValue()
+      //console.time("addmethod render")
+    render(svgGroup, g);
+    //console.timeEnd("addmethod render")
+    nodeDrag.call(svg.selectAll("g.node"));
+    svg.selectAll("g.node").on("click", clicked)
+  }
+  // 実行してみる
+  addNodes(model_data)
+
+  function removeNode(d) {
+    var node = g.node(d)
+      // 関係nodeから記録を抹消
+    if (node.to) {
+      node.to.forEach(function(t) {
+        g.node(t).from = g.node(t).from.filter(function(_) {
+          return _ != d
+        })
+      })
+    }
+    if (node.from) { //fromが無いことは、、あるか。。
+      node.from.forEach(function(f) {
+        g.node(f).to = g.node(f).to.filter(function(_) {
+          return _ != d
+        })
+      })
+    }
+    g.removeNode(d)
+  }
+
+  // 候補メソッドの追加
+  function addMethods(d) {
+    for (var m in methods_data) {
+      var method = $.extend(true, {}, methods_data[m])
+      method.id = "m" + mcount
+      method.from = [d]
+      addNode(method)
+        //g.node(method.id).classed({temp:true})
+    }
+
+    console.time("addmethod render")
+    render(svgGroup, g);
+    console.timeEnd("addmethod render")
+      // dragとclickの設定。毎回やるのは。。。だが、rendar後にしかできないので。。
+    nodeDrag.call(svg.selectAll("g.node"));
+    svg.selectAll("g.node").on("click", clicked)
+  }
+
+  // 候補引数ノードの追加
+  function addArgNodes(d, args) {
+    if (!methods_data[g.node(d).method].args) return
+    var argary = new Function("args", methods_data[g.node(d).method].args)
+    argary(args).forEach(function(arg) {
+      argdata = {
+        id: "m" + mcount,
+        label: arg,
+        class: "variable temp",
+        from: [d]
+      }
+      addNode(argdata)
+      g.node(argdata.id).classed({
+        temp: true
+      })
+    })
+    render(svgGroup, g);
+    nodeDrag.call(svg.selectAll("g.node"));
+    svg.selectAll("g.node").on("click", clicked)
+  }
+
+  // Center the graph
+  var xCenterOffset = 0 //(svg.attr("width") - g.graph().width) / 2;
+  svgGroup.attr("transform", "translate(" + xCenterOffset + ", 20)");
+  //svg.attr("height", g.graph().height + 40);
+  svg.attr("height", 600);
+
+  var currentFocusedId = null
+
+  function focusIn(id) {
+    if (!id) {
+      console.log("invalid id is given. use top of g.nodes else")
+      id = g.nodes()[0]
+    }
+    // なんとなくtempは外しているが、実際このメソッドはどのタイミングでmodel_dataに格納されるのか？
+    //g.node(id).classed({temp:false})
+    focusOut() // 一旦クリア
+    g.node(id).classed({
+      focused: true
+    })
+    currentFocusedId = id
+      //addMethods(id)
+  }
+
+  function focusOut() {
+    dagreD3NodeClass(currentFocusedId, {
+      focused: false
+    })
+    d3.selectAll(".temp").each(function(d) {
+      //  removeNode(d)
+    })
+    currentFocusedId = null
+  }
+
+
+  function dagreD3NodeClass(id, classobj) {
+    if (!id) return
+    var cls = g.node(id)
+    var cla = cls.class.split(" ")
+    for (var k in classobj) {
+      if (classobj[k]) {
+        if (!cla.some(function(c) {
+            return c == k
+          })) {
+          cla.push(k)
+        }
+      } else {
+        cla = cla.filter(function(c) {
+          return c != k
+        })
+      }
+    }
+    cls.class = cla.join(" ")
+    g.setNode(id, cls)
+      // d3obj とdagred3objの同期。。こんな。。
+      //render(svgGroup, g)
+    svgGroup.select("#" + id).classed(classobj) //rendarはやりすぎだから直接書き換え
+  }
+
+
+  var methods = [{
+    label: "method 1",
+    class: "type-Method"
+  }, {
+    label: "method 2",
+    class: "type-Method"
+  }, {
+    label: "method 3",
+    class: "type-Method"
+  }, ]
+
+
+  // handle key event
+  /*
+  // Return key, ↩
+         '↩': 13, 'return': 13, enter: 13, '⌅': 13,
+  '←': 37, left: 37, 'arrow-left': 37,
+              // Up Arrow Key, or ↑
+              '↑': 38, up: 38, 'arrow-up': 38,
+              // Right Arrow Key, or →
+              '→': 39, right: 39, 'arrow-right': 39,
+              // Up Arrow Key, or ↓
+              '↓': 40, down: 40, 'arrow-down': 40,
+              */
+  var onKey = {
+    13: function() {
+      // todo:focusノードの確定
+      g.node(currentFocusedId).showMethods()
+    },
+    37: function() {
+      focusIn(g.node(currentFocusedId).from[0])
+    },
+    39: function() {
+      focusIn(g.node(currentFocusedId).to[0])
+    },
+    38: function() {
+      focusIn(g.node(currentFocusedId).getSibling(-1, true))
+    },
+    40: function() {
+      focusIn(g.node(currentFocusedId).getSibling(1, true))
+    }
+  }
+  d3.select("body").on("keydown", function() {
+    onKey[d3.event.keyCode]()
+  })
+
+  // drag関連
+  function dragstart(d) {
+    d3.event.sourceEvent.stopPropagation();
+  }
+
+  function dragmove(d) {
+    var node = d3.select(this),
+      selectedNode = g.node(d);
+    var prevX = selectedNode.x,
+      prevY = selectedNode.y;
+
+    selectedNode.x += d3.event.dx;
+    selectedNode.y += d3.event.dy;
+    node.attr('transform', 'translate(' + selectedNode.x + ',' + selectedNode.y + ')');
+
+    var dx = selectedNode.x - prevX,
+      dy = selectedNode.y - prevY;
+
+    g.edges().forEach(function(e) {
+      if (e.v == d || e.w == d) {
+        edge = g.edge(e.v, e.w);
+        translateEdge(g.edge(e.v, e.w), dx, dy);
+        $('#' + edge.id + " path").attr('d', calcPoints(e));
+      }
+    })
+  }
+
+  function translateEdge(e, dx, dy) {
+    e.points.forEach(function(p) {
+      p.x = p.x + dx;
+      p.y = p.y + dy;
+    });
+  }
+  //taken from dagre-d3 source code (not the exact same)
+  function calcPoints(e) {
+    var edge = g.edge(e.v, e.w),
+      tail = g.node(e.v),
+      head = g.node(e.w);
+    var points = edge.points.slice(1, edge.points.length - 1);
+    var afterslice = edge.points.slice(1, edge.points.length - 1)
+    points.unshift(intersectRect(tail, points[0]));
+    points.push(intersectRect(head, points[points.length - 1]));
+    return d3.svg.line()
+      .x(function(d) {
+        return d.x;
+      })
+      .y(function(d) {
+        return d.y;
+      })
+      .interpolate("basis")
+      (points);
+  }
+
+  //taken from dagre-d3 source code (not the exact same)
+  function intersectRect(node, point) {
+    var x = node.x;
+    var y = node.y;
+    var dx = point.x - x;
+    var dy = point.y - y;
+    //g.node(node.customId)
+    //var w = $("#" + node.customId).attr('width') / 2;
+    var w = $("#" + node.id + " rect").attr('width') / 2;
+    var h = $("#" + node.id + " rect").attr('height') / 2;
+    var sx = 0,
+      sy = 0;
+    if (Math.abs(dy) * w > Math.abs(dx) * h) {
+      // Intersection is top or bottom of rect.
+      if (dy < 0) {
+        h = -h;
+      }
+      sx = dy === 0 ? 0 : h * dx / dy;
+      sy = h;
+    } else {
+      // Intersection is left or right of rect.
+      if (dx < 0) {
+        w = -w;
+      }
+      sx = w;
+      sy = dx === 0 ? 0 : w * dy / dx;
+    }
+    return {
+      x: x + sx,
+      y: y + sy
+    };
+  }
+</script>
