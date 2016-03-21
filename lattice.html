@@ -19,7 +19,7 @@
     font-size: 14px;
   }
 
-  g.node rect {
+  g.node rect,circle {
     stroke: #999;
     fill: #fff;
     stroke-width: 1.5px;
@@ -61,7 +61,7 @@
     fill: #999;
   }
 
-  g.selected div.inner{
+  g.selected div.inner {
     background-color: #68f;
   }
 
@@ -72,6 +72,7 @@
   div.inner:hover {
     background-color: #9F9;
   }
+
   div.inner {
     background-color: #def;
   }
@@ -326,7 +327,7 @@
             n._func = new Function("args", methods_data[n.method].formula)
             break
           default:
-
+n._func = function(args){return undefined}
         }
       }
     )
@@ -346,54 +347,87 @@
     // nodeの作成
     g.setNode(n.id, n)
     var node = g.node(n.id)
-    //htmlラベルのテスト。。動的なサイズ変更は難しいか？
+    // メソッドの設定 todo:クラス化
+  node.classed = function(classobj) {
+    node.class = editClassStrings(node.class, classobj)
+    g.setNode(node.id, node)
+    svgGroup.select("#" + node.id).classed(classobj)
+  }
+  node.isClass = function(classtr) {
+    return 0 <= node.class.indexOf(classtr)
+  }
+      //htmlラベルのテスト。。動的なサイズ変更は難しいか？
+      if (node.isClass("collection")) {
+        node.label = n.dtext
+      }else{
     node.labelType = "html"
     var text = n.dtext
-    node.label = "<div class='inner'>" + text + "</div>"
+    node.label = "<div>" + node.id + "</div>"
+    node.label += "<div class='inner'>" + text
     node.label += "<input type='text' value='" + text + "' />"
     node.label += "<input type='button' value='候補' onclick='g.node(\"" + n.id + "\").showMethods()' />"
     node.label += "<input type='button' value='確定' onclick='g.node(\"" + n.id + "\").update()' />"
     node.label += "<input type='button' value='閉じる' onclick='g.node(\"" + n.id + "\").collapse()' />"
+    node.label += "<input type='button' value='削除' onclick='removeNode(\"" + n.id + "\")' />"
+    node.label += "</div>"
 
-    node.update = function(){
-      //保存するのです！
-      var id = this.id
-      this.classed({temp:false})
-      model_data[id] = {
-        id:id,
-        dtext:$("#"+id+" input[type=\"text\"]").val(),
-        class:this.class,
-        description:this.description,
-        from:[]
-      }
-      if(this.method){model_data[id].method = this.method }
-    if(this.from){
-        this.from.forEach(function(f){
-          model_data[id].from.push(f)
-          if(g.node(f).isClass("temp")){g.node(f).update()}
+    // 候補の表示
+    if (node.isClass("variable")) {
+      //候補の表示
+      node.showMethods = function() {
+          addMethods(node.id)
+        } // todo:適切なmethodの追加
+    } else if (node.isClass("method")) {
+      node.rx = node.ry = 15
+        // 候補の表示
+      node.showMethods = function() {
+          addArgNodes(node.id, g.node(node.from[0]))
+        } // Todo 親の指定方法。。
+    }
+
+    node.collapse = function(){
+      collapse(this.to)
+    }
+
+    node.update = function() {
+        //保存するのです！
+        var id = this.id
+        this.classed({
+          temp: false
         })
-      }
-      // tempを削除
-      if(this.to){
-        model_data[id].to= this.to.filter(function(t){
-          if(g.node(t).isClass("temp")){
-            removeNode(t)
-            return false
-          }
-          return true
-        })}
+        model_data[id] = {
+          id: id,
+          dtext: $("#" + id + " input[type=\"text\"]").val(),
+          class: this.class,
+          description: this.description,
+          from: [],
+        }
+        if (this.method) {
+          model_data[id].method = this.method
+        }
+        if (this.from) {
+          this.from.forEach(function(f) {
+            model_data[id].from.push(f)
+            if (g.node(f).isClass("temp")) {
+              g.node(f).update()
+            }
+          })
+        }
+        // tempを削除
+        if (this.to) {
+          model_data[id].to = this.to.filter(function(t) {
+            if (g.node(t).isClass("temp")) {
+              removeNode(t)
+              return false
+            }
+            return true
+          })
+        }
         addNode(model_data[id])
 
+      }
     }
-    // メソッドの設定 todo:クラス化
-    node.classed = function(classobj) {
-      node.class = editClassStrings(node.class, classobj)
-      g.setNode(node.id, node)
-      svgGroup.select("#" + node.id).classed(classobj)
-    }
-    node.isClass = function(classtr) {
-      return 0 <= node.class.indexOf(classtr)
-    }
+
 
     // 自分の兄弟を返すメソッド
     node.getSibling = function(count, followAncestor) {
@@ -423,21 +457,6 @@
       return node.id // 見つからなかったら自分
     }
 
-    // 候補の表示
-    if (node.isClass("variable")) {
-      //候補の表示
-      node.showMethods = function() {
-          addMethods(node.id)
-        } // todo:適切なmethodの追加
-    } else if (node.isClass("method")) {
-      node.rx = node.ry = 15
-        // 候補の表示
-      node.showMethods = function() {
-          addArgNodes(node.id, g.node(node.from[0]))
-        } // Todo 親の指定方法。。
-    }
-
-    // グラフ表示を閉じる
 
 
     // 基本的に外から辺を設定する事はない、Nodeを作った際に同時に（以下で）辺を作成する
@@ -543,6 +562,7 @@
       })
     }
     g.removeNode(d)
+    render(svgGroup, g);
   }
 
   // 候補メソッドの追加
@@ -584,13 +604,28 @@
     svg.selectAll("g.node").on("click", clicked)
   }
 
-  function collapse(nodes){
-    var c_data = {dtext:"開く",labelType:circle,to:[],from:[]}
-    nodes.forEach(function(n){
-      c_data.to.push(n.to)
-      c_data.to = filter
-
+  function collapse(nodes) {
+    var c_data = {
+      class:"collection",
+      id:"m"+mcount,
+      dtext: "開く",
+      shape: "circle",
+      to: [],
+      from: [],
+      _ids: [],
+    }
+    nodes.forEach(function(nid) {
+      c_data._ids.push(nid)
+      var n = g.node(nid)
+      Array.prototype.push.apply(c_data.to,n.to)
+      Array.prototype.push.apply(c_data.from,n.from)
+      removeNode(nid)
     })
+    c_data.to = c_data.to.filter(function(_){return c_data.to.indexOf(_)>=0 &&  c_data._ids.indexOf(_)<0})
+    c_data.from = c_data.from.filter(function(_){return c_data.from.indexOf(_)>=0 &&  c_data._ids.indexOf(_)<0})
+    addNode(c_data)
+    render(svgGroup, g);
+
   }
 
 
@@ -604,24 +639,30 @@
   var currentFocusedId = null
 
   function focusIn(id) {
-    if (!id) {
+    if (!id || !g.node(id)) {
       console.log("invalid id is given. use top of g.nodes else")
       id = g.nodes()[0]
     }
-    focusOut() // 一旦クリア
-    if(!d3.event.shiftKey){
-      d3.selectAll(".selected").classed({selected:false})
+    // 一旦クリア
+    focusOut()
+    if (!d3.event.shiftKey) {
+      d3.selectAll(".selected").classed({
+        selected: false
+      })
     }
+
     g.node(id).classed({
       focused: true,
-      selected:true
+      selected: true
     })
     currentFocusedId = id
   }
 
   function focusOut() {
-    if(!currentFocusedId) return
-    g.node(currentFocusedId).classed({focused: false})
+    if (!currentFocusedId) return
+    g.node(currentFocusedId).classed({
+      focused: false
+    })
     currentFocusedId = null
   }
 
@@ -638,23 +679,23 @@
               '↓': 40, down: 40, 'arrow-down': 40,
               */
   d3.select("body").on("keydown", function() {
-    switch(d3.event.keyCode){
+    switch (d3.event.keyCode) {
       case 13:
         // todo:focusノードの確定
         g.node(currentFocusedId).showMethods()
-      break
+        break
       case 37:
         focusIn(g.node(currentFocusedId).from[0])
-      break
+        break
       case 39:
         focusIn(g.node(currentFocusedId).to[0])
-      break
+        break
       case 38:
         focusIn(g.node(currentFocusedId).getSibling(-1, true))
-      break
+        break
       case 40:
         focusIn(g.node(currentFocusedId).getSibling(1, true))
-      break
+        break
       default:
 
     }
