@@ -81,11 +81,16 @@
   div.inner input {
     float: left;
   }
-  div#notification{
-    position:fixed;top:0;right:0;z-index:9999;
+
+  div#notification {
+    position: fixed;
+    top: 0;
+    right: 0;
+    z-index: 9999;
     overflow-y: scroll;
   }
-  div#notification p{
+
+  div#notification p {
     margin: 0;
   }
 </style>
@@ -95,7 +100,9 @@
       console.log(dat)
       var me = $("<p>").text(dat) //.css(float:right)
       $("#notification").append(me)
-        me.fadeOut(10000,function(){me.remove()})
+      me.fadeOut(10000, function() {
+        me.remove()
+      })
     }
   </script>
 </div>
@@ -347,11 +354,11 @@
             break
           default:
         }
-        if(!n._func){
-        n._func = function(args) {
-          return undefined
+        if (!n._func) {
+          n._func = function(args) {
+            return undefined
+          }
         }
-      }
 
       }
     )
@@ -366,7 +373,7 @@
         })
       }
       n._value = n._func(args)
-      notify(n.id+" update to "+n._value)
+      notify(n.id + " update to " + n._value)
       if (n.from) {
         n.from.forEach(function(f) {
           var nf = g.node(f)
@@ -553,7 +560,7 @@
     }
     if (n._to) {
       n._to.forEach(function(t) {
-        addEdge(n.id,t)
+        addEdge(n.id, t)
       })
     }
     // 子要素が変更された時に呼ばれる
@@ -648,15 +655,15 @@
       return
     }
     var c_data = {
-      class: "collection",
-      id: "m" + mcount,
-      dtext: "開く",
-      shape: "circle",
-      _to: [],
-      _from: [],
-      _ids: [],
-    }
-    // 閉じるノードの保存
+        class: "collection",
+        id: "m" + mcount,
+        dtext: "開く",
+        shape: "circle",
+        _to: [],
+        _from: [],
+        _ids: [],
+      }
+      // 閉じるノードの保存
     nodes.forEach(function(nid) {
       c_data._ids.push(nid)
       var n = g.node(nid)
@@ -674,10 +681,10 @@
     render(svgGroup, g);
   }
 
-  function decollapse(id){
+  function decollapse(id) {
     var ncol = g.node(id) //collapseノードは当然model_dataにはないので
-    if(ncol && ncol._ids){
-      ncol._ids.forEach(function(i){
+    if (ncol && ncol._ids) {
+      ncol._ids.forEach(function(i) {
         addNode(model_data[i])
       })
       removeNode(id)
