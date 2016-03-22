@@ -81,7 +81,24 @@
   div.inner input {
     float: left;
   }
+  div#notification{
+    position:fixed;top:0;right:0;z-index:9999;
+    overflow-y: scroll;
+  }
+  div#notification p{
+    margin: 0;
+  }
 </style>
+<div id="notification">
+  <script type="text/javascript">
+    function notify(dat) {
+      console.log(dat)
+      var me = $("<p>").text(dat) //.css(float:right)
+      $("#notification").append(me)
+        me.fadeOut(10000,function(){me.remove()})
+    }
+  </script>
+</div>
 
 <div class="inner">tete</div>
 <svg id="svg-canvas" width=960 height=600></svg>
@@ -91,6 +108,7 @@
 </section>
 
 <script id="js">
+  notify("start")
   var model_data = {
     "n1": {
       id: "n1",
@@ -328,10 +346,13 @@
             n._func = new Function("args", methods_data[n.method].formula)
             break
           default:
-            n._func = function(args) {
-              return undefined
-            }
         }
+        if(!n._func){
+        n._func = function(args) {
+          return undefined
+        }
+      }
+
       }
     )
     n._updateValue = function() {
@@ -345,14 +366,17 @@
         })
       }
       n._value = n._func(args)
-      if (node.from) {
-              node.from.forEach(function(f) {
-                var nf = g.node(f)
-                if(nf && !nf.isClass("temp")&& !nf.isClass("collection")){
-                g.node(f).updateValue()
-              }else{model_data[f]._updateValue()}
-              })
-            }
+      notify(n.id+" update to "+n._value)
+      if (n.from) {
+        n.from.forEach(function(f) {
+          var nf = g.node(f)
+          if (nf && !nf.isClass("temp") && !nf.isClass("collection")) {
+            g.node(f).updateValue()
+          } else {
+            model_data[f]._updateValue()
+          }
+        })
+      }
     }
 
     // nodeの作成
@@ -369,7 +393,8 @@
       }
       //htmlラベルのテスト。。動的なサイズ変更は難しいか？
     if (node.isClass("collection")) {
-      node.label = n.dtext
+      node.labelType = "html"
+      node.label = "<input type='button' value='開く' onclick='decollapse(\"" + n.id + "\")' />"
     } else {
       node.labelType = "html"
       var text = n.dtext
@@ -485,7 +510,7 @@
         svgGroup.select("#" + ed.id).classed(classobj)
       }
     }
-    // g.nodeオブジェクトのfrom/toデータ整備。。。なんでnodeじゃなくてn(model_dataの方)を
+    // dataオブジェクトのfrom/toデータ整備。。。
     if (n.from) {
       n.from.forEach(function(f) {
         addEdge(f, n.id)
@@ -521,6 +546,16 @@
       })
     }
 
+    if (n._from) {
+      n._from.forEach(function(f) {
+        addEdge(f, n.id)
+      })
+    }
+    if (n._to) {
+      n._to.forEach(function(t) {
+        addEdge(n.id,t)
+      })
+    }
     // 子要素が変更された時に呼ばれる
     node.updateValue = function() {
       var clobj = {}
@@ -528,13 +563,6 @@
       n._updateValue()
       clobj["v" + n._value] = true
       node.classed(clobj)
-        // 親のチェーンを駆け上る
-/*      if (node.from) {
-        node.from.forEach(function(f) {
-          //g.edge(f,node.id).classed(clobj) //edgeにclassが無い・・
-          g.node(f).updateValue()
-        })
-      }*/
     }
     node.updateValue() //早速実行してムル
     mcount++
@@ -616,32 +644,45 @@
   }
 
   function collapse(nodes) {
-    if(!nodes || nodes.length <= 0) {return}
+    if (!nodes || nodes.length <= 0) {
+      return
+    }
     var c_data = {
       class: "collection",
       id: "m" + mcount,
       dtext: "開く",
       shape: "circle",
-      to: [],
-      from: [],
+      _to: [],
+      _from: [],
       _ids: [],
     }
+    // 閉じるノードの保存
     nodes.forEach(function(nid) {
       c_data._ids.push(nid)
       var n = g.node(nid)
-      Array.prototype.push.apply(c_data.to, n.to)
-      Array.prototype.push.apply(c_data.from, n.from)
+      Array.prototype.push.apply(c_data._to, n.to)
+      Array.prototype.push.apply(c_data._from, n.from)
       removeNode(nid)
     })
-    c_data.to = c_data.to.filter(function(_) {
-      return c_data.to.indexOf(_) >= 0 && c_data._ids.indexOf(_) < 0
+    c_data._to = c_data._to.filter(function(_) {
+      return c_data._to.indexOf(_) >= 0 && c_data._ids.indexOf(_) < 0
     })
-    c_data.from = c_data.from.filter(function(_) {
-      return c_data.from.indexOf(_) >= 0 && c_data._ids.indexOf(_) < 0
+    c_data._from = c_data._from.filter(function(_) {
+      return c_data._from.indexOf(_) >= 0 && c_data._ids.indexOf(_) < 0
     })
     addNode(c_data)
     render(svgGroup, g);
+  }
 
+  function decollapse(id){
+    var ncol = g.node(id) //collapseノードは当然model_dataにはないので
+    if(ncol && ncol._ids){
+      ncol._ids.forEach(function(i){
+        addNode(model_data[i])
+      })
+      removeNode(id)
+      render(svgGroup, g);
+    }
   }
 
 
@@ -656,7 +697,7 @@
 
   function focusIn(id) {
     if (!id || !g.node(id)) {
-      console.log("invalid id is given. use top of g.nodes else")
+      notify("invalid id is given. use top of g.nodes else")
       id = g.nodes()[0]
     }
     // 一旦クリア
