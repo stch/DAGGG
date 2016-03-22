@@ -12,7 +12,8 @@
 <style id="css">
   /* This sets the color for "TK" nodes to a light blue green. */
 
-  div,text {
+  div,
+  text {
     font-weight: 300;
     font-family: "Helvetica Neue", Helvetica, Arial, sans-serf;
     font-size: 14px;
@@ -68,6 +69,16 @@
     background-color: #9F9;
   }
 </style>
+<div id="notification" style="top:0;right:10;position:fixed;z-index:9999;">
+  <script type="text/javascript">
+    function notify(dat) {
+      console.log(dat)
+      var me = $("<p>").text(dat) //.css(float:right)
+      $("#notification").append(me)
+        //me.fadeOut(10000,function(){me.remove()})
+    }
+  </script>
+</div>
 
 <div class="inner">tete</div>
 <svg id="svg-canvas" width=960 height=600></svg>
@@ -77,6 +88,7 @@
 </section>
 
 <script id="js">
+  notify("start")
   var model_data = {
     "n1": {
       id: "n1",
@@ -287,10 +299,11 @@
   var mcount = 0
 
   function hideinner(id) {
-    $("#"+id+" div.inner").hide()
+    $("#" + id + " div.inner").hide()
   }
+
   function showinner(id) {
-    $("#"+id+" div.inner").show()
+    $("#" + id + " div.inner").show()
   }
 
   function addNode(n) {
@@ -300,7 +313,7 @@
     var text = n.label
     node.label = "<div class='inner' style='display: none;'>" + text + "</div>"
     node.label += "<input type='text' value='" + text + "' />"
-    node.label += "<input type='button' value='OK' onclick='showinner(\'"+n.id+"\')' />"
+    node.label += "<input type='button' value='OK' onclick='showinner(\"" + n.id + "\")' />"
 
 
     function addEdge(f, t) {
@@ -373,7 +386,7 @@
                 if (gt && !gt.isClass("temp")) {
                   return gt._value
                 }
-            }
+              }
               return undefined
             }
 
@@ -539,7 +552,7 @@
 
   function focusIn(id) {
     if (!id) {
-      console.log("invalid id is given. use top of g.nodes else")
+      notify("invalid id is given. use top of g.nodes else")
       id = g.nodes()[0]
     }
     // なんとなくtempは外しているが、実際このメソッドはどのタイミングでmodel_dataに格納されるのか？
